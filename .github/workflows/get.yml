@@ -133,7 +133,13 @@ jobs:
           PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
 
       - name: List public dir
-        run: ls -R "$PUBLIC_DIR" 
+        run: |
+          ls -R "$PUBLIC_DIR"
+          echo "### Files created or updated by this run" >> "$GITHUB_STEP_SUMMARY"
+          # find files (ignore directories), print relative paths and add bullets
+          find "$PUBLIC_DIR" -type f | sed -e "s|^./||" | while IFS= read -r f; do
+            echo "- $f" >> "$GITHUB_STEP_SUMMARY"
+          done
         env:
           PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
 
