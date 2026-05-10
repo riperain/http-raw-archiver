@@ -46,6 +46,22 @@ jobs:
         env:
           URL: ${{ github.event.inputs.url }}
 
+      - name: Copy repo CSS into public root (if present)
+        run: |
+          set -euo pipefail
+          # Assumes the repository contains a CSS file at assets/styles.css.
+          # If it exists, copy it to the public root so generated pages can include /styles.css.
+          SRC="${GITHUB_WORKSPACE}/assets/styles.css"
+          DEST="${{ steps.prepare.outputs.public-dir }}/styles.css"
+          mkdir -p "$(dirname "$DEST")"
+          if [ -f "$SRC" ]; then
+            cp "$SRC" "$DEST"
+          else
+            touch "$DEST"
+          fi
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+
       - name: Fetch URL (headers + body)
         run: |
           set -euo pipefail
@@ -69,7 +85,7 @@ jobs:
           escaped = html.escape(raw)
           headers = open("$HEADERS","rb").read().decode("utf-8",errors="replace")
           html_doc = f"""<!doctype html>
-          <html><head><meta charset="utf-8"><title>Fetched: {html.escape("$URL")}</title></head><body>
+          <html><head><meta charset="utf-8"><title>Fetched: {html.escape("$URL")}</title><link rel="stylesheet" href="/styles.css"></head><body>
           <h1>Response headers</h1><pre>{html.escape(headers)}</pre>
           <h1>Page source (escaped)</h1><pre style="white-space:pre-wrap;word-break:break-all">{escaped}</pre>
           </body></html>"""
@@ -88,7 +104,7 @@ jobs:
 
           if [ ! -f "${URL_FILE}" ]; then
             cat > "${URL_FILE}" <<HTML
-          <!doctype html><html><head><meta charset="utf-8"><title>Versions for ${FOLDER}</title></head><body>
+          <!doctype html><html><head><meta charset="utf-8"><title>Versions for ${FOLDER}</title><link rel="stylesheet" href="/styles.css"></head><body>
           <h1>Versions for ${FOLDER}</h1><ul></ul></body></html>
           HTML
           fi
@@ -114,7 +130,7 @@ jobs:
 
           if [ ! -f "${GLOBAL}" ]; then
             cat > "${GLOBAL}" <<HTML
-          <!doctype html><html><head><meta charset="utf-8"><title>Fetched URLs</title></head><body>
+          <!doctype html><html><head><meta charset="utf-8"><title>Fetched URLs</title><link rel="stylesheet" href="/styles.css"></head><body>
           <h1>Fetched URLs</h1><ul></ul></body></html>
           HTML
           fi
