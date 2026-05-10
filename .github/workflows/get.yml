@@ -52,7 +52,7 @@ jobs:
           # Assumes the repository contains a CSS file at assets/styles.css.
           # If it exists, copy it to the public root so generated pages can include /styles.css.
           SRC="${GITHUB_WORKSPACE}/assets/styles.css"
-          DEST="${{ steps.prepare.outputs.public-dir }}/styles.css"
+          DEST="${PUBLIC_DIR}/styles.css"
           mkdir -p "$(dirname "$DEST")"
           if [ -f "$SRC" ]; then
             cp "$SRC" "$DEST"
@@ -61,6 +61,8 @@ jobs:
           fi
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
+          PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
+          
 
       - name: Fetch URL (headers + body)
         run: |
