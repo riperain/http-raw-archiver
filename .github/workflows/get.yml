@@ -57,7 +57,7 @@ jobs:
           if [ -f "$SRC" ]; then
             cp "$SRC" "$DEST"
           else
-            touch "$DEST"
+            echo "pre{font-size:smaller;white-space:pre-wrap;word-break:break-al}" > "$DEST"
           fi
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
@@ -85,10 +85,17 @@ jobs:
           escaped = html.escape(raw)
           headers = open("$HEADERS","rb").read().decode("utf-8",errors="replace")
           html_doc = f"""<!doctype html>
-          <html><head><meta charset="utf-8"><title>Fetched: {html.escape("$URL")}</title><link rel="stylesheet" href="/styles.css"></head><body>
+          <html>
+          <head>
+          <meta charset="utf-8">
+          <title>Fetched: {html.escape("$URL")}</title>
+          <link rel="stylesheet" href="/styles.css">
+          </head>
+          <body>
           <h1>Response headers</h1><pre>{html.escape(headers)}</pre>
-          <h1>Page source (escaped)</h1><pre style="white-space:pre-wrap;word-break:break-all">{escaped}</pre>
-          </body></html>"""
+          <h1>Page source</h1><pre>{escaped}</pre>
+          </body>
+          </html>"""
           open("$OUTPAGE","w",encoding="utf-8").write(html_doc)
           PY
         env:
@@ -104,13 +111,23 @@ jobs:
 
           if [ ! -f "${URL_FILE}" ]; then
             cat > "${URL_FILE}" <<HTML
-          <!doctype html><html><head><meta charset="utf-8"><title>Versions for ${FOLDER}</title><link rel="stylesheet" href="/styles.css"></head><body>
-          <h1>Versions for ${FOLDER}</h1><ul></ul></body></html>
+          <!doctype html>
+          <html>
+          <head>
+          <meta charset="utf-8">
+          <title>Versions for ${FOLDER}</title>
+          <link rel="stylesheet" href="/styles.css">
+          </head>
+          <body>
+          <h1>Versions for ${FOLDER}</h1>
+          <ul></ul>
+          </body>
+          </html>
           HTML
           fi
 
           TMP=$(mktemp)
-          awk -v ts="${TS}" -v fn="${TS}/${{ steps.prepare.outputs.filename }}" -v url="${URL}" \
+          awk -v ts="${TS}" -v fn="${TS}/$FILENAME" -v url="${URL}" \
             'BEGIN{insert=0}
              /<ul>/ && !insert { print; print "<li><a href=\"" fn "\">" ts "</a> - " url "</li>"; insert=1; next }
              { print }' "${URL_FILE}" > "${TMP}"
@@ -121,6 +138,7 @@ jobs:
           TS: ${{ steps.prepare.outputs.ts }}
           URL: ${{ steps.prepare.outputs.url }}
           PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
+          FILENAME: ${{ steps.prepare.outputs.filename }}
 
       - name: Update global index
         run: |
@@ -130,8 +148,18 @@ jobs:
 
           if [ ! -f "${GLOBAL}" ]; then
             cat > "${GLOBAL}" <<HTML
-          <!doctype html><html><head><meta charset="utf-8"><title>Fetched URLs</title><link rel="stylesheet" href="/styles.css"></head><body>
-          <h1>Fetched URLs</h1><ul></ul></body></html>
+          <!doctype html>
+          <html>
+          <head>
+          <meta charset="utf-8">
+          <title>Fetched URLs</title>
+          <link rel="stylesheet" href="/styles.css">
+          </head>
+          <body>
+          <h1>Fetched URLs</h1>
+          <ul></ul>
+          </body>
+          </html>
           HTML
           fi
 
@@ -150,11 +178,10 @@ jobs:
 
       - name: List public dir
         run: |
-          ls -R "$PUBLIC_DIR"
-          echo "### Files created or updated by this run" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Files" | tee -a "$GITHUB_STEP_SUMMARY"
           # find files (ignore directories), print relative paths and add bullets
           find "$PUBLIC_DIR" -type f | sed -e "s|^./||" | while IFS= read -r f; do
-            echo "- $f" >> "$GITHUB_STEP_SUMMARY"
+            echo "- $f" | tee -a "$GITHUB_STEP_SUMMARY"
           done
         env:
           PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
