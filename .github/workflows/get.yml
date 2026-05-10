@@ -24,7 +24,7 @@ jobs:
       target-dir: ${{ steps.prepare.outputs.target-dir }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Prepare workspace
         id: prepare
@@ -140,7 +140,7 @@ jobs:
           PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
 
       - name: Upload pages artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ steps.prepare.outputs.public-dir }}
 
