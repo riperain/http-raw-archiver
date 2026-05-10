@@ -1,0 +1,156 @@
+name: HTTP GET a URL and publish pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to fetch'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  fetch-and-build:
+    runs-on: ubuntu-latest
+    outputs:
+      public-dir: ${{ steps.prepare.outputs.public-dir }}
+      folder: ${{ steps.prepare.outputs.folder }}
+      ts: ${{ steps.prepare.outputs.ts }}
+      filename: ${{ steps.prepare.outputs.filename }}
+      target-dir: ${{ steps.prepare.outputs.target-dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare workspace
+        id: prepare
+        run: |
+          set -euo pipefail
+
+          TS=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+          SANITIZED=$(echo "$URL" | sed -E 's#^https?://##' | sed -E 's/[^A-Za-z0-9._-]/_/g')
+          FOLDER="${SANITIZED}"
+          FILENAME="${TS}.html"
+          PUBLIC_DIR="public"
+          TARGET_DIR="${PUBLIC_DIR}/${FOLDER}/${TS}"
+          mkdir -p "${TARGET_DIR}"
+
+          echo "public-dir=${PUBLIC_DIR}" >> "$GITHUB_OUTPUT"
+          echo "folder=${FOLDER}" >> "$GITHUB_OUTPUT"
+          echo "ts=${TS}" >> "$GITHUB_OUTPUT"
+          echo "filename=${FILENAME}" >> "$GITHUB_OUTPUT"
+          echo "target-dir=${TARGET_DIR}" >> "$GITHUB_OUTPUT"
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+        env:
+          URL: ${{ github.event.inputs.url }}
+
+      - name: Fetch URL (headers + body)
+        run: |
+          set -euo pipefail
+          curl -s -L -D "${TARGET_DIR}/response-headers.txt" -o "${TARGET_DIR}/raw.html" "$URL" || true
+          printf '%s\n' "URL: $URL" "Fetched: $TS" > "${TARGET_DIR}/meta.txt"
+        env:
+          URL: ${{ steps.prepare.outputs.url }}
+          TARGET_DIR: ${{ steps.prepare.outputs.target-dir }}
+          TS: ${{ steps.prepare.outputs.ts }}
+
+      - name: Create escaped page and header display
+        run: |
+          set -euo pipefail
+          HEADERS="${TARGET_DIR}/response-headers.txt"
+          RAW="${TARGET_DIR}/raw.html"
+          OUTPAGE="${TARGET_DIR}/$FILENAME"
+
+          python3 - <<PY
+          import html
+          raw = open("$RAW","rb").read().decode("utf-8",errors="replace")
+          escaped = html.escape(raw)
+          headers = open("$HEADERS","rb").read().decode("utf-8",errors="replace")
+          html_doc = f"""<!doctype html>
+          <html><head><meta charset="utf-8"><title>Fetched: {html.escape("$URL")}</title></head><body>
+          <h1>Response headers</h1><pre>{html.escape(headers)}</pre>
+          <h1>Page source (escaped)</h1><pre style="white-space:pre-wrap;word-break:break-all">{escaped}</pre>
+          </body></html>"""
+          open("$OUTPAGE","w",encoding="utf-8").write(html_doc)
+          PY
+        env:
+          URL: ${{ steps.prepare.outputs.url }}
+          TARGET_DIR: ${{ steps.prepare.outputs.target-dir }}
+          FILENAME: ${{ steps.prepare.outputs.filename }}
+
+      - name: Update per-URL version index
+        run: |
+          set -euo pipefail
+          URL_FILE="${PUBLIC_DIR}/${FOLDER}/index.html"
+          mkdir -p "${PUBLIC_DIR}/${FOLDER}"
+
+          if [ ! -f "${URL_FILE}" ]; then
+            cat > "${URL_FILE}" <<HTML
+          <!doctype html><html><head><meta charset="utf-8"><title>Versions for ${FOLDER}</title></head><body>
+          <h1>Versions for ${FOLDER}</h1><ul></ul></body></html>
+          HTML
+          fi
+
+          TMP=$(mktemp)
+          awk -v ts="${TS}" -v fn="${TS}/${{ steps.prepare.outputs.filename }}" -v url="${URL}" \
+            'BEGIN{insert=0}
+             /<ul>/ && !insert { print; print "<li><a href=\"" fn "\">" ts "</a> - " url "</li>"; insert=1; next }
+             { print }' "${URL_FILE}" > "${TMP}"
+          mv "${TMP}" "${URL_FILE}"
+        env:
+          FOLDER: ${{ steps.prepare.outputs.folder }}
+          TARGET_DIR: ${{ steps.prepare.outputs.target-dir }}
+          TS: ${{ steps.prepare.outputs.ts }}
+          URL: ${{ steps.prepare.outputs.url }}
+          PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
+
+      - name: Update global index
+        run: |
+          set -euo pipefail
+          GLOBAL="${PUBLIC_DIR}/index.html"
+          mkdir -p "${PUBLIC_DIR}"
+
+          if [ ! -f "${GLOBAL}" ]; then
+            cat > "${GLOBAL}" <<HTML
+          <!doctype html><html><head><meta charset="utf-8"><title>Fetched URLs</title></head><body>
+          <h1>Fetched URLs</h1><ul></ul></body></html>
+          HTML
+          fi
+
+          if ! grep -q "${FOLDER}/" "${GLOBAL}"; then
+            TMP=$(mktemp)
+            awk -v folder="${FOLDER}" -v title="${URL}" \
+              'BEGIN{insert=0}
+               /<ul>/ && !insert { print; print "<li><a href=\"" folder "/index.html\">" title "</a></li>"; insert=1; next }
+               { print }' "${GLOBAL}" > "${TMP}"
+            mv "${TMP}" "${GLOBAL}"
+          fi
+        env:
+          FOLDER: ${{ steps.prepare.outputs.folder }}
+          URL: ${{ steps.prepare.outputs.url }}
+          PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
+
+      - name: List public dir
+        run: ls -R "$PUBLIC_DIR" 
+        env:
+          PUBLIC_DIR: ${{ steps.prepare.outputs.public-dir }}
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: ${{ steps.prepare.outputs.public-dir }}
+
+  deploy:
+    needs: fetch-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v1
+        with:
+          wait-for-deployment: true
+
+
